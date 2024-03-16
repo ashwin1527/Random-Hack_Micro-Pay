@@ -1,4 +1,5 @@
 module self::micropayment_hash{
+    use aptos_framework::randomness;
     use std::signer;
     use aptos_framework::account;
     use aptos_framework::coin;
@@ -18,7 +19,6 @@ module self::micropayment_hash{
     const E_NOT_RECEIVER: u64 = 3;
     const E_INVALID_TOKEN: u64 = 4;
 
-
     struct Channel has store, drop, key{
         channel_id: u64,
         sender_address: address,
@@ -26,7 +26,7 @@ module self::micropayment_hash{
         initial_amount: u64,
         total_tokens: u64,
         redeemed: bool,
-        trust_anchor: String,
+        key: u256,
     }
 
     struct SignerCapabilityStore has key{
@@ -61,8 +61,8 @@ module self::micropayment_hash{
         });
     }
 
-    public entry fun create_channel (sender: &signer, receiver_address: address, initial_amount: u64,total_tokens:u64,  trust_anchor: String) acquires GlobalTable, SignerCapabilityStore {
-       let sender_address = signer::address_of(sender);
+    public entry fun create_channel (sender: &signer, receiver_address: address, initial_amount: u64,total_tokens:u64) acquires GlobalTable, SignerCapabilityStore {
+        let sender_address = signer::address_of(sender);
         let global_table_resource = borrow_global_mut<GlobalTable>(MODULE_OWNER);
         let counter = global_table_resource.channel_counter + 1;
         assert!(sender_address != receiver_address, ENO_SAME_SENDER_RECEIVER);
@@ -75,13 +75,15 @@ module self::micropayment_hash{
         coin::transfer<AptosCoin>(sender, rsrc_acc_address, initial_amount);
 
         // assert!(self::channel_exists(sender_address, receiver_address) == false, "channel already exists");
+        let key_value = randomness::u256_integer();
+
         let new_channel = Channel {
             channel_id: counter,
             sender_address: sender_address,
             receiver_address: receiver_address,
             initial_amount: initial_amount,
             total_tokens: total_tokens,
-            trust_anchor: trust_anchor,
+            key: key_value,
             redeemed: false,
         };
         // self::set_channel(sender_address, receiver_address, channel);
@@ -89,7 +91,7 @@ module self::micropayment_hash{
         global_table_resource.channel_counter = counter;
     }
 
-    public entry fun redeem_channel (receiver: &signer,final_token: String, no_of_tokens: u64, channel_id: u64) acquires GlobalTable, SignerCapabilityStore {
+    public entry fun redeem_channel (receiver: &signer,no_of_tokens: u64, channel_id: u64,key_pair: u256) acquires GlobalTable, SignerCapabilityStore {
 
         
         let global_table_resource = borrow_global_mut<GlobalTable>(MODULE_OWNER);
@@ -101,7 +103,7 @@ module self::micropayment_hash{
         assert!(channel.receiver_address == receiver_address, E_NOT_RECEIVER);
         let total_tokens = channel.total_tokens;
         let initial_amount = channel.initial_amount;
-        let trust_anchor_vec = *std::string::bytes(&channel.trust_anchor);
+        let key_value = channel.key;
 
         let signer_cap_resource = borrow_global_mut<SignerCapabilityStore>(MODULE_OWNER);
         let (rsrc_acc_signer,  _rsrc_acc_address) = get_rsrc_acc(signer_cap_resource);
@@ -111,16 +113,7 @@ module self::micropayment_hash{
 
 
         // let hash = calculate_hash(final_token, channel.trust_anchor, no_of_tokens, channel_id);
-        let input = *std::string::bytes(&final_token);
-        let hash_value = hash::sha3_256(input);
-        let num = no_of_tokens;
-        while (num > 1) {
-            hash_value = hash::sha3_256(input);
-            num = num - 1;
-            input = hash_value;
-        };
-
-        if(hash_value == trust_anchor_vec){
+        if(key_pair == key_value){
             let receiver_amount = (no_of_tokens * initial_amount)/total_tokens; 
             let sender_amount = initial_amount - receiver_amount;
             // Get resource account - get_rsrc_account(): (signer, address)
@@ -140,6 +133,14 @@ module self::micropayment_hash{
         let rsrc_acc_addr = signer::address_of(&rsrc_acc_signer);
 
         (rsrc_acc_signer, rsrc_acc_addr)
+    }
+
+    #[view]
+    public fun get_my_key(receiver: &signer, channel_id: u64): u256 acquires GlobalTable{
+        let global_table_resource = borrow_global<GlobalTable>(MODULE_OWNER);
+        let channel = table::borrow(&global_table_resource.channel_table, channel_id);
+        assert!(signer::address_of(receiver) == channel.receiver_address, ENO_SAME_SENDER_RECEIVER);
+        channel.key
     }
 
 }
