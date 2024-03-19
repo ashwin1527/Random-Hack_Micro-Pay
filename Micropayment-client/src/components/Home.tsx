@@ -24,7 +24,7 @@ const FAUCET_URL =
 
 export const provider = new Provider(Network.DEVNET);
 export const moduleAddress =
-  "0xab813698b98db14276364f797e9e40086219425ae9b6dca306d0759d48458e81";
+  "0x5368fda23c48aecfadc109397e200c4a8b7621f833c2fe293d6fc6ae78cd7e7b";
 function Home() {
   // const aptos = new Aptos();
   const { account, signAndSubmitTransaction } = useWallet();
