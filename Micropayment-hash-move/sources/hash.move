@@ -29,6 +29,10 @@ module self::micropayment_hash{
         key: u256,
     }
 
+    struct UserKey has key{
+        address_to_key: Table<address,u256>, 
+    }
+
     struct SignerCapabilityStore has key{
         signer_cap: account::SignerCapability
     }
@@ -56,6 +60,7 @@ module self::micropayment_hash{
             channel_counter: 0,
         });
 
+    
         move_to(deployer, SignerCapabilityStore{
             signer_cap
         });
@@ -86,6 +91,14 @@ module self::micropayment_hash{
             key: key_value,
             redeemed: false,
         };
+
+        let addr_to_key = table::new();
+        table::upsert(&mut addr_to_key,sender_address,key_value);
+
+        move_to(sender, UserKey {
+            address_to_key: addr_to_key,
+        });
+
         // self::set_channel(sender_address, receiver_address, channel);
         table::upsert(&mut global_table_resource.channel_table, counter, new_channel);
         global_table_resource.channel_counter = counter;
@@ -136,11 +149,12 @@ module self::micropayment_hash{
     }
 
     #[view]
-    public fun get_my_key(receiver: &signer, channel_id: u64): u256 acquires GlobalTable{
-        let global_table_resource = borrow_global<GlobalTable>(MODULE_OWNER);
-        let channel = table::borrow(&global_table_resource.channel_table, channel_id);
-        assert!(signer::address_of(receiver) == channel.receiver_address, ENO_SAME_SENDER_RECEIVER);
-        channel.key
+    public fun get_my_key(receiver: &signer, sender: address): u256 acquires UserKey{
+       let receiver_address = signer::address_of(receiver);
+        assert!(exists<UserKey>(sender), E_INVALID_TOKEN);
+        let key_resource = borrow_global<UserKey>(sender);
+        assert!(table::contains(&key_resource.address_to_key, receiver_address), ENO_SAME_SENDER_RECEIVER);
+        *table::borrow(&key_resource.address_to_key, receiver_address)
     }
 
 }
